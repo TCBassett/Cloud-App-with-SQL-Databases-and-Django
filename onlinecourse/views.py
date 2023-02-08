@@ -114,11 +114,12 @@ def submit(request, course_id):
     user = request.user
     course = get_object_or_404(Course, pk=course_id)
     enrollement = Enrollment.objects.get(user = user, course = course)
-    submission = Submission.objects.create(enrollment= enrollement)
     answears = extract_answers(request)
-    submission['answears'] = answears
-    return redirect('course/<int:course_id>/submission/<int:submission_id>/result/')
+    submission = Submission.objects.create(enrollment= enrollement)
+    for answear in answears:
+        submission.choices.add(answear)
 
+    return HttpResponseRedirect(reverse(viewname='onlinecourse:show_exam_result', args=(course.id,submission.id)))
 
 # <HINT> A example method to collect the selected choices from the exam form from the request object
 def extract_answers(request):
@@ -142,15 +143,30 @@ def show_exam_result(request, course_id, submission_id):
     submission = get_object_or_404(Submission, pk=submission_id)
     context = {}
     user_score = 0
-    choices_id = []
-    for item in submission[answears]:
-        choices_id.append(item.id)
+    total_score = 0
+    user_choices = []
+
+    for question in Question.objects.filter(courses = course.id ):
+        total_score += question.grade
+
+    for item in submission.choices.all():
+        user_choices.append(item)
         if item.correct:
-            user_score += get_object_or_404(Question, pk=item.id)
+            all_answers = Choice.objects.filter(questions = item.questions.id, correct = True)
+            if len(all_answers) > 0:
+                user_score += get_object_or_404(Question, pk=item.questions.id).grade / len(all_answers)
+            else:
+                user_score += get_object_or_404(Question, pk=item.questions.id).grade
         
-    context['choices_id'] = choices_id
+    try:
+        user_score = round(user_score / total_score * 100)
+    except:
+        user_score = 0
+
+    context['user_choices'] = user_choices
     context['course'] = course
     context['user_score'] = user_score
+    return render(request, 'onlinecourse/exam_result_bootstrap.html', context)
     
     
 
